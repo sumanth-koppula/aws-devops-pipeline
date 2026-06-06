@@ -10,12 +10,12 @@ fullnameOverride: ""
 
 serviceAccount:
   create:     true
-  name:       "nodejs-app"
+  name:       ""
   annotations:
     eks.amazonaws.com/role-arn: ""   # Set by Terraform IRSA output
 
 service:
-  type: ClusterIp
+  type: ClusterIP
   port: 80
   targetPort: 3000
   annotations:
