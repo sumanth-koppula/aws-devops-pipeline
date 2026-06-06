@@ -1,0 +1,88 @@
+{{- if .Values.ingress.enabled -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name:      {{ include "nodejs-app.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:    {{ include "nodejs-app.labels" . | nindent 4 }}
+  annotations:
+    {{- with .Values.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    #
+    # Common annotation examples (uncomment as needed):
+    #
+    # ── NGINX Ingress Controller ──────────────────────────────────
+    # nginx.ingress.kubernetes.io/rewrite-target: /
+    # nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    # nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    #
+    # ── AWS ALB Ingress Controller ────────────────────────────────
+    # kubernetes.io/ingress.class: alb
+    # alb.ingress.kubernetes.io/scheme: internet-facing
+    # alb.ingress.kubernetes.io/target-type: ip
+    # alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:...
+    # alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+    # alb.ingress.kubernetes.io/healthcheck-path: /health
+    #
+    # ── cert-manager (auto TLS from Let's Encrypt) ────────────────
+    # cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  {{- if and .Values.ingress.className (semverCompare ">=1.18-0" .Capabilities.KubeVersion.GitVersion) }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+
+  {{- if .Values.ingress.tls }}
+  tls:
+    {{- range .Values.ingress.tls }}
+    - hosts:
+        {{- range .hosts }}
+        - {{ . | quote }}
+        {{- end }}
+      secretName: {{ .secretName }}
+    {{- end }}
+  {{- end }}
+
+  rules:
+    {{- range .Values.ingress.hosts }}
+    - host: {{ .host | quote }}
+      http:
+        paths:
+          {{- range .paths }}
+          - path:     {{ .path }}
+            pathType: {{ .pathType | default "Prefix" }}
+            backend:
+              service:
+                name: {{ include "nodejs-app.fullname" $ }}
+                port:
+                  number: {{ $.Values.service.port }}
+          {{- end }}
+    {{- end }}
+{{- end }}
+
+# ── How to enable Ingress in values.yaml ─────────────────────────────────
+#
+# ingress:
+#   enabled: true
+#   className: nginx          # or alb
+#   annotations:
+#     nginx.ingress.kubernetes.io/ssl-redirect: "true"
+#   hosts:
+#     - host: app.example.com
+#       paths:
+#         - path:     /
+#           pathType: Prefix
+#         - path:     /api
+#           pathType: Prefix
+#   tls:
+#     - secretName: nodejs-app-tls       # cert-manager creates this
+#       hosts:
+#         - app.example.com
+#
+# ── How to enable in Jenkins pipeline ────────────────────────────────────
+#
+#   helm upgrade --install nodejs-app ./helm/nodejs-app \
+#     --set ingress.enabled=true \
+#     --set ingress.hosts[0].host=app.example.com \
+#     --set ingress.hosts[0].paths[0].path="/" \
+#     --set ingress.className=nginx

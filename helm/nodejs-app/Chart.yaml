@@ -1,0 +1,12 @@
+apiVersion: v2
+name:        nodejs-app
+description: P9 DevOps Pipeline — Node.js App Helm Chart
+type:        application
+version:     0.1.0
+appVersion:  "1.0.0"
+maintainers:
+  - name: DevOps Team
+keywords:
+  - nodejs
+  - devops
+  - p9

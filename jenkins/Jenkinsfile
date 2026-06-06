@@ -1,0 +1,272 @@
+// ── P9 Declarative Jenkinsfile ────────────────────────────────────────
+// Stages:  1-Test → 2-Trivy Scan → 3-Build → 4-Push ECR
+//          → 5-Ansible Config → 6-EKS Deploy → Post
+
+pipeline {
+
+  agent any   // Jenkins server itself; stages override with docker agent
+
+  options {
+    buildDiscarder(logRotator(numToKeepStr: '10'))
+    timeout(time: 45, unit: 'MINUTES')
+    timestamps()
+    ansiColor('xterm')
+  }
+
+  // ── Parameters ──────────────────────────────────────────────────
+  parameters {
+    string(name: 'BRANCH',      defaultValue: 'main',  description: 'Branch to build')
+    string(name: 'ENVIRONMENT', defaultValue: 'dev',   description: 'Target environment')
+    booleanParam(name: 'SKIP_TESTS',   defaultValue: false, description: 'Skip test stage')
+    booleanParam(name: 'SKIP_ANSIBLE', defaultValue: false, description: 'Skip Ansible stage')
+    booleanParam(name: 'RUN_DESTROY',  defaultValue: false, description: 'Destroy infra (DANGER)')
+  }
+
+  // ── Environment ─────────────────────────────────────────────────
+  environment {
+    AWS_REGION      = 'us-east-1'
+    PROJECT_NAME    = 'p9-devops'
+    APP_NAME        = 'nodejs-app'
+    ECR_REGISTRY    = credentials('ecr-registry-url')   // Store in Jenkins credentials
+    IMAGE_NAME      = "${ECR_REGISTRY}/${PROJECT_NAME}-${APP_NAME}"
+    IMAGE_TAG       = "${BUILD_NUMBER}-${GIT_COMMIT.take(7)}"
+    EKS_CLUSTER     = "${PROJECT_NAME}-${params.ENVIRONMENT}-eks"
+    HELM_RELEASE    = "${APP_NAME}"
+    HELM_NAMESPACE  = 'default'
+    TRIVY_SEVERITY  = 'HIGH,CRITICAL'
+    SLACK_CHANNEL   = '#devops-alerts'
+  }
+
+  // ── Stages ──────────────────────────────────────────────────────
+  stages {
+
+    // ── 0. Checkout ───────────────────────────────────────────────
+    stage('Checkout') {
+      steps {
+        checkout([
+          $class: 'GitSCM',
+          branches: [[name: "*/${params.BRANCH}"]],
+          userRemoteConfigs: [[
+            url:           'https://github.com/yourname/devops-p9.git',
+            credentialsId: 'github-credentials'
+          ]]
+        ])
+        script {
+          env.GIT_COMMIT_MSG = sh(script: 'git log -1 --pretty=%B', returnStdout: true).trim()
+          echo "Building: ${env.IMAGE_NAME}:${env.IMAGE_TAG}"
+          echo "Commit:   ${env.GIT_COMMIT_MSG}"
+        }
+      }
+    }
+
+    // ── 1. Unit Tests ─────────────────────────────────────────────
+    stage('Test') {
+      when { not { expression { params.SKIP_TESTS } } }
+      agent {
+        docker {
+          image 'node:18-alpine'
+          args  '-u root'
+          reuseNode true
+        }
+      }
+      steps {
+        dir('app') {
+          sh 'npm ci'
+          sh 'npm test'
+        }
+      }
+      post {
+        always {
+          junit allowEmptyResults: true,
+                testResults: 'app/coverage/junit.xml'
+          publishHTML(target: [
+            reportDir:   'app/coverage/lcov-report',
+            reportFiles: 'index.html',
+            reportName:  'Coverage Report'
+          ])
+        }
+      }
+    }
+
+    // ── 2. Security Scan (Trivy) ──────────────────────────────────
+    stage('Trivy Scan') {
+      steps {
+        script {
+          // Build image in a temp tag first, scan, then retag
+          sh """
+            docker build -t ${IMAGE_NAME}:scan-${BUILD_NUMBER} ./app
+            
+            trivy image \
+              --severity ${TRIVY_SEVERITY} \
+              --exit-code 1 \
+              --ignore-unfixed \
+              --format table \
+              --output trivy-report-${BUILD_NUMBER}.txt \
+              ${IMAGE_NAME}:scan-${BUILD_NUMBER} || true
+
+            # Archive the report but only fail on exit code 1 (unfixed criticals)
+            trivy image \
+              --severity ${TRIVY_SEVERITY} \
+              --exit-code 1 \
+              --ignore-unfixed \
+              ${IMAGE_NAME}:scan-${BUILD_NUMBER}
+          """
+        }
+      }
+      post {
+        always {
+          archiveArtifacts allowEmptyArchive: true,
+                           artifacts: "trivy-report-*.txt"
+        }
+      }
+    }
+
+    // ── 3. Build Docker Image ─────────────────────────────────────
+    stage('Build Docker Image') {
+      steps {
+        sh """
+          docker build \
+            --build-arg APP_VERSION=${IMAGE_TAG} \
+            --build-arg BUILD_DATE=\$(date -u +%Y-%m-%dT%H:%M:%SZ) \
+            --label "git.commit=${GIT_COMMIT}" \
+            --label "build.number=${BUILD_NUMBER}" \
+            -t ${IMAGE_NAME}:${IMAGE_TAG} \
+            -t ${IMAGE_NAME}:latest \
+            ./app
+        """
+      }
+    }
+
+    // ── 4. Push to ECR ────────────────────────────────────────────
+    stage('Push to ECR') {
+      steps {
+        withAWS(region: "${AWS_REGION}") {
+          sh """
+            aws ecr get-login-password --region ${AWS_REGION} | \
+              docker login --username AWS --password-stdin ${ECR_REGISTRY}
+            docker push ${IMAGE_NAME}:${IMAGE_TAG}
+            docker push ${IMAGE_NAME}:latest
+          """
+        }
+      }
+      post {
+        success {
+          echo "Pushed ${IMAGE_NAME}:${IMAGE_TAG} to ECR"
+        }
+      }
+    }
+
+    // ── 5. Ansible — Configure EC2 Workers ───────────────────────
+    stage('Ansible Configure EC2') {
+      when { not { expression { params.SKIP_ANSIBLE } } }
+      steps {
+        withAWS(region: "${AWS_REGION}") {
+          withCredentials([sshUserPrivateKey(
+            credentialsId: 'ec2-ssh-key',
+            keyFileVariable: 'SSH_KEY'
+          )]) {
+            sh """
+              export ANSIBLE_HOST_KEY_CHECKING=False
+              export AWS_DEFAULT_REGION=${AWS_REGION}
+
+              ansible-playbook ansible/playbooks/configure.yml \
+                -i ansible/inventory/aws_ec2.yml \
+                --private-key \$SSH_KEY \
+                --extra-vars "environment=${params.ENVIRONMENT}" \
+                -v
+            """
+          }
+        }
+      }
+    }
+
+    // ── 5b. Ansible — Deploy to EC2 Workers ──────────────────────
+    stage('Ansible Deploy App') {
+      when { not { expression { params.SKIP_ANSIBLE } } }
+      steps {
+        withAWS(region: "${AWS_REGION}") {
+          withCredentials([sshUserPrivateKey(
+            credentialsId: 'ec2-ssh-key',
+            keyFileVariable: 'SSH_KEY'
+          )]) {
+            sh """
+              export ANSIBLE_HOST_KEY_CHECKING=False
+              export AWS_DEFAULT_REGION=${AWS_REGION}
+
+              ansible-playbook ansible/playbooks/deploy.yml \
+                -i ansible/inventory/aws_ec2.yml \
+                --private-key \$SSH_KEY \
+                --extra-vars "image_tag=${IMAGE_TAG} ecr_registry=${ECR_REGISTRY} environment=${params.ENVIRONMENT}" \
+                -v
+            """
+          }
+        }
+      }
+    }
+
+    // ── 6. Deploy to EKS via Helm ────────────────────────────────
+    stage('Deploy to EKS') {
+      steps {
+        withAWS(region: "${AWS_REGION}") {
+          sh """
+            # Update kubeconfig
+            aws eks update-kubeconfig \
+              --region ${AWS_REGION} \
+              --name ${EKS_CLUSTER}
+
+            # Helm upgrade / install
+            helm upgrade --install ${HELM_RELEASE} ./helm/nodejs-app \
+              --namespace ${HELM_NAMESPACE} \
+              --create-namespace \
+              --set image.repository=${IMAGE_NAME} \
+              --set image.tag=${IMAGE_TAG} \
+              --set env.APP_VERSION=${IMAGE_TAG} \
+              --set env.NODE_ENV=production \
+              --values ./helm/nodejs-app/values-prod.yaml \
+              --wait \
+              --timeout 5m \
+              --atomic
+          """
+        }
+      }
+    }
+
+    // ── 7. Smoke Test ─────────────────────────────────────────────
+    stage('Smoke Test') {
+      steps {
+        withAWS(region: "${AWS_REGION}") {
+          sh """
+            bash jenkins/scripts/health-check.sh \
+              ${HELM_RELEASE} \
+              ${HELM_NAMESPACE} \
+              60
+          """
+        }
+      }
+    }
+
+  }
+
+  // ── Post Actions ─────────────────────────────────────────────────
+  post {
+    success {
+      script {
+        def msg = "✅ *P9 Deploy SUCCESS* | Branch: ${params.BRANCH} | " +
+                  "Image: ${env.IMAGE_TAG} | Build: #${BUILD_NUMBER}"
+        sh "bash jenkins/scripts/notify-slack.sh '${msg}' 'good'"
+      }
+    }
+    failure {
+      script {
+        def msg = "❌ *P9 Deploy FAILED* | Branch: ${params.BRANCH} | " +
+                  "Stage: ${env.STAGE_NAME} | Build: #${BUILD_NUMBER}"
+        sh "bash jenkins/scripts/notify-slack.sh '${msg}' 'danger'"
+      }
+    }
+    always {
+      // Clean up local Docker images to prevent disk bloat
+      sh "docker image prune -f --filter 'until=24h' || true"
+      cleanWs()
+    }
+  }
+}

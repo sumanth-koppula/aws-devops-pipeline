@@ -1,0 +1,9 @@
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/terraform.tfvars
+terraform/plan.tfplan
+*.pem
+.env
+node_modules/
+app/node_modules/
