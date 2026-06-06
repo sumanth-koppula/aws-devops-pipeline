@@ -15,7 +15,7 @@ serviceAccount:
     eks.amazonaws.com/role-arn: ""   # Set by Terraform IRSA output
 
 service:
-  type: LoadBalancer
+  type: ClusterIp
   port: 80
   targetPort: 3000
   annotations:

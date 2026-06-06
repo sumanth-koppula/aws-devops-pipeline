@@ -1,8 +1,8 @@
 # Production overrides — applied by Jenkins with --values flag
-replicaCount: 3
+replicaCount: 1
 
 hpa:
-  enabled:     true
+  enabled:     false
   minReplicas: 3
   maxReplicas: 20
 
@@ -17,3 +17,4 @@ resources:
 serviceMonitor:
   enabled:  true
   interval: 15s
+
