@@ -1,0 +1,5 @@
+# Variables specific to EC2 worker hosts
+docker_compose_dir: /opt/p9-app
+app_port: 3000
+host_port: 80
+node_env: production

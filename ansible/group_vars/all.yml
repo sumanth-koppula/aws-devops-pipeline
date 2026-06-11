@@ -1,0 +1,11 @@
+# Global variables for all hosts
+aws_region:    us-east-1
+project_name:  p9-devops
+environment:   "{{ lookup('env', 'ENVIRONMENT') | default('dev') }}"
+
+# ECR — injected by Jenkins environment variable
+ecr_registry:  "{{ lookup('env', 'ECR_REGISTRY') }}"
+app_image_tag: "{{ lookup('env', 'IMAGE_TAG') | default('latest') }}"
+
+# Logging
+log_level: info

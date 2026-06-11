@@ -1,0 +1,49 @@
+---
+# ansible/roles/docker/vars/main.yml
+#
+# Variables used exclusively by the docker role.
+# Pin versions here to ensure environment consistency.
+
+# ── Docker CE version ────────────────────────────────────────────────
+# Pin to a specific version so dev and prod run the same Docker daemon.
+# Find available versions: yum list available docker-ce --showduplicates
+docker_ce_version: "24.0.7"       # Format: X.Y.Z (without epoch prefix)
+
+# ── Docker packages to install ───────────────────────────────────────
+docker_packages:
+  - docker-ce-{{ docker_ce_version }}
+  - docker-ce-cli
+  - containerd.io
+  - docker-compose-plugin     # docker compose (v2 plugin, part of Docker CE)
+
+# ── Docker daemon configuration ──────────────────────────────────────
+# Written to /etc/docker/daemon.json
+docker_daemon_config:
+  log-driver: json-file
+  log-opts:
+    max-size: "100m"
+    max-file: "3"
+  storage-driver: overlay2
+  exec-opts:
+    - native.cgroupdriver=systemd   # Required for Kubernetes compatibility
+  live-restore: true                # Keep containers running if daemon restarts
+
+# ── Users to add to the docker group ────────────────────────────────
+# These users can run docker without sudo.
+docker_group_users:
+  - ec2-user
+  - appuser
+
+# ── Docker Compose standalone (legacy v1 compat) ─────────────────────
+# docker-compose-plugin (v2) is installed via yum above.
+# This installs standalone docker-compose v1 binary for backward compat.
+docker_compose_version: "2.23.0"
+docker_compose_url: >-
+  https://github.com/docker/compose/releases/download/v{{ docker_compose_version }}/docker-compose-Linux-x86_64
+
+# ── Docker CE repository URL ─────────────────────────────────────────
+docker_repo_url: "https://download.docker.com/linux/centos/docker-ce.repo"
+
+# ── Directories created on each host ─────────────────────────────────
+docker_data_dir:    /var/lib/docker
+docker_config_dir:  /etc/docker

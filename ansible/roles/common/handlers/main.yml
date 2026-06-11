@@ -1,0 +1,3 @@
+---
+- name: restart sysctl
+  ansible.builtin.command: sysctl --system

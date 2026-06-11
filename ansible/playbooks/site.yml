@@ -1,0 +1,21 @@
+---
+# Master playbook — runs all roles in sequence
+# Usage: ansible-playbook playbooks/site.yml
+
+- name: "Phase 1 — Common OS configuration"
+  hosts: role_worker
+  gather_facts: true
+  roles:
+    - common
+
+- name: "Phase 2 — Docker installation"
+  hosts: role_worker
+  gather_facts: false
+  roles:
+    - docker
+
+- name: "Phase 3 — Application deployment"
+  hosts: role_worker
+  gather_facts: false
+  roles:
+    - app

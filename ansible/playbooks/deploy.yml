@@ -1,0 +1,14 @@
+---
+# Triggered by Jenkins after ECR push
+# ansible-playbook playbooks/deploy.yml \
+#   --extra-vars "image_tag=abc123 ecr_registry=123456789.dkr.ecr.us-east-1.amazonaws.com"
+
+- name: "Deploy App to EC2 Workers"
+  hosts: "{{ target_hosts | default('role_worker') }}"
+  gather_facts: false
+
+  vars:
+    deploy_image_tag: "{{ image_tag | default('latest') }}"
+
+  roles:
+    - app

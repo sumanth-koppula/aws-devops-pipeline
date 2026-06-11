@@ -1,0 +1,427 @@
+{
+  "__inputs": [],
+  "__requires": [
+    { "type": "grafana",     "id": "grafana",    "name": "Grafana",    "version": "10.0.0" },
+    { "type": "datasource",  "id": "prometheus", "name": "Prometheus", "version": "1.0.0" },
+    { "type": "panel",       "id": "timeseries", "name": "Time series","version": "" },
+    { "type": "panel",       "id": "gauge",      "name": "Gauge",      "version": "" },
+    { "type": "panel",       "id": "stat",       "name": "Stat",       "version": "" }
+  ],
+  "annotations": {
+    "list": [
+      {
+        "builtIn":    1,
+        "datasource": { "type": "datasource", "uid": "-- Grafana --" },
+        "enable":     true,
+        "hide":       true,
+        "iconColor":  "rgba(0, 211, 255, 1)",
+        "name":       "Annotations & Alerts",
+        "type":       "dashboard"
+      }
+    ]
+  },
+  "description":   "P9 DevOps Pipeline — Node.js Application Metrics",
+  "editable":      true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip":  1,
+  "id":            null,
+  "links":         [],
+  "panels": [
+
+    {
+      "collapsed":  false,
+      "gridPos":    { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id":         100,
+      "title":      "HTTP Traffic",
+      "type":       "row"
+    },
+
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Total HTTP requests per second, grouped by HTTP method",
+      "fieldConfig": {
+        "defaults": {
+          "color":   { "mode": "palette-classic" },
+          "custom":  { "lineWidth": 2, "fillOpacity": 10 },
+          "unit":    "reqps"
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
+      "id":      1,
+      "options": { "tooltip": { "mode": "multi" } },
+      "targets": [
+        {
+          "expr":         "sum(rate(p9_http_requests_total{namespace=~\"$namespace\"}[5m])) by (method)",
+          "legendFormat": "{{ method }}",
+          "refId":        "A"
+        }
+      ],
+      "title": "Request Rate (req/s) by Method",
+      "type":  "timeseries"
+    },
+
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "HTTP requests per second grouped by route path",
+      "fieldConfig": {
+        "defaults": {
+          "color":  { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2, "fillOpacity": 10 },
+          "unit":   "reqps"
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+      "id":      2,
+      "targets": [
+        {
+          "expr":         "sum(rate(p9_http_requests_total{namespace=~\"$namespace\"}[5m])) by (route)",
+          "legendFormat": "{{ route }}",
+          "refId":        "A"
+        }
+      ],
+      "title": "Request Rate (req/s) by Route",
+      "type":  "timeseries"
+    },
+
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Percentage of 4xx + 5xx responses out of total requests",
+      "fieldConfig": {
+        "defaults": {
+          "color":   { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green",  "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red",    "value": 5 }
+            ]
+          },
+          "unit":    "percent",
+          "min":     0,
+          "max":     100
+        }
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 9 },
+      "id":      3,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "expr":   "100 * sum(rate(p9_http_requests_total{status_code=~\"4..|5..\",namespace=~\"$namespace\"}[5m])) / sum(rate(p9_http_requests_total{namespace=~\"$namespace\"}[5m]))",
+          "refId":  "A"
+        }
+      ],
+      "title": "Error Rate %",
+      "type":  "gauge"
+    },
+
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Total requests in the selected time range",
+      "fieldConfig": {
+        "defaults": {
+          "unit":  "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode":  "absolute",
+            "steps": [{ "color": "blue", "value": null }]
+          }
+        }
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 9 },
+      "id":      4,
+      "options": { "reduceOptions": { "calcs": ["sum"] } },
+      "targets": [
+        {
+          "expr":  "increase(p9_http_requests_total{namespace=~\"$namespace\"}[$__range])",
+          "refId": "A"
+        }
+      ],
+      "title": "Total Requests",
+      "type":  "stat"
+    },
+
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Number of running pods for the nodejs-app deployment",
+      "fieldConfig": {
+        "defaults": {
+          "unit":  "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode":  "absolute",
+            "steps": [
+              { "color": "red",   "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          }
+        }
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 9 },
+      "id":      5,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "expr":  "kube_deployment_status_replicas_ready{deployment=\"nodejs-app\",namespace=~\"$namespace\"}",
+          "refId": "A"
+        }
+      ],
+      "title": "Ready Pods",
+      "type":  "stat"
+    },
+
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Application uptime in seconds",
+      "fieldConfig": {
+        "defaults": {
+          "unit":  "s",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode":  "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          }
+        }
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 9 },
+      "id":      6,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "expr":  "avg(p9_node_process_uptime_seconds{namespace=~\"$namespace\"})",
+          "refId": "A"
+        }
+      ],
+      "title": "App Uptime",
+      "type":  "stat"
+    },
+
+    {
+      "collapsed":  false,
+      "gridPos":    { "h": 1, "w": 24, "x": 0, "y": 13 },
+      "id":         101,
+      "title":      "Latency",
+      "type":       "row"
+    },
+
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "p50 (median), p95, p99 HTTP request duration",
+      "fieldConfig": {
+        "defaults": {
+          "color":  { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2 },
+          "unit":   "s"
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+      "id":      7,
+      "targets": [
+        {
+          "expr":         "histogram_quantile(0.50, sum(rate(p9_http_request_duration_seconds_bucket{namespace=~\"$namespace\"}[5m])) by (le))",
+          "legendFormat": "p50",
+          "refId":        "A"
+        },
+        {
+          "expr":         "histogram_quantile(0.95, sum(rate(p9_http_request_duration_seconds_bucket{namespace=~\"$namespace\"}[5m])) by (le))",
+          "legendFormat": "p95",
+          "refId":        "B"
+        },
+        {
+          "expr":         "histogram_quantile(0.99, sum(rate(p9_http_request_duration_seconds_bucket{namespace=~\"$namespace\"}[5m])) by (le))",
+          "legendFormat": "p99",
+          "refId":        "C"
+        }
+      ],
+      "title": "Request Duration Percentiles",
+      "type":  "timeseries"
+    },
+
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Average request duration per route",
+      "fieldConfig": {
+        "defaults": {
+          "color":  { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2 },
+          "unit":   "s"
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
+      "id":      8,
+      "targets": [
+        {
+          "expr":         "sum(rate(p9_http_request_duration_seconds_sum{namespace=~\"$namespace\"}[5m])) by (route) / sum(rate(p9_http_request_duration_seconds_count{namespace=~\"$namespace\"}[5m])) by (route)",
+          "legendFormat": "{{ route }}",
+          "refId":        "A"
+        }
+      ],
+      "title": "Avg Duration by Route",
+      "type":  "timeseries"
+    },
+
+    {
+      "collapsed":  false,
+      "gridPos":    { "h": 1, "w": 24, "x": 0, "y": 22 },
+      "id":         102,
+      "title":      "Pod Resources",
+      "type":       "row"
+    },
+
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "CPU usage per pod as a percentage of the pod's CPU limit",
+      "fieldConfig": {
+        "defaults": {
+          "color":  { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2, "fillOpacity": 10 },
+          "unit":   "percentunit",
+          "min":    0,
+          "max":    1
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 23 },
+      "id":      9,
+      "targets": [
+        {
+          "expr":         "sum(rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\",pod=~\"nodejs-app.*\",container=\"nodejs-app\"}[5m])) by (pod) / sum(kube_pod_container_resource_limits{namespace=~\"$namespace\",pod=~\"nodejs-app.*\",container=\"nodejs-app\",resource=\"cpu\"}) by (pod)",
+          "legendFormat": "{{ pod }}",
+          "refId":        "A"
+        }
+      ],
+      "title": "CPU Usage % of Limit per Pod",
+      "type":  "timeseries"
+    },
+
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Memory usage per pod as a percentage of the pod's memory limit",
+      "fieldConfig": {
+        "defaults": {
+          "color":  { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2, "fillOpacity": 10 },
+          "unit":   "percentunit",
+          "min":    0,
+          "max":    1
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 23 },
+      "id":      10,
+      "targets": [
+        {
+          "expr":         "sum(container_memory_working_set_bytes{namespace=~\"$namespace\",pod=~\"nodejs-app.*\",container=\"nodejs-app\"}) by (pod) / sum(kube_pod_container_resource_limits{namespace=~\"$namespace\",pod=~\"nodejs-app.*\",container=\"nodejs-app\",resource=\"memory\"}) by (pod)",
+          "legendFormat": "{{ pod }}",
+          "refId":        "A"
+        }
+      ],
+      "title": "Memory Usage % of Limit per Pod",
+      "type":  "timeseries"
+    },
+
+    {
+      "collapsed":  false,
+      "gridPos":    { "h": 1, "w": 24, "x": 0, "y": 31 },
+      "id":         103,
+      "title":      "Node.js Process Metrics",
+      "type":       "row"
+    },
+
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Node.js heap memory used vs total allocated",
+      "fieldConfig": {
+        "defaults": {
+          "color":  { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2 },
+          "unit":   "bytes"
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 32 },
+      "id":      11,
+      "targets": [
+        {
+          "expr":         "avg(p9_node_heap_size_used_bytes{namespace=~\"$namespace\"}) by (pod)",
+          "legendFormat": "Heap Used — {{ pod }}",
+          "refId":        "A"
+        },
+        {
+          "expr":         "avg(p9_node_heap_size_total_bytes{namespace=~\"$namespace\"}) by (pod)",
+          "legendFormat": "Heap Total — {{ pod }}",
+          "refId":        "B"
+        }
+      ],
+      "title": "Heap Memory (Used vs Total)",
+      "type":  "timeseries"
+    },
+
+    {
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "description": "Node.js active event loop handles — high count may indicate resource leaks",
+      "fieldConfig": {
+        "defaults": {
+          "color":  { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2 },
+          "unit":   "short"
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 32 },
+      "id":      12,
+      "targets": [
+        {
+          "expr":         "avg(p9_node_active_handles_total{namespace=~\"$namespace\"}) by (pod)",
+          "legendFormat": "Active Handles — {{ pod }}",
+          "refId":        "A"
+        },
+        {
+          "expr":         "avg(p9_node_active_requests_total{namespace=~\"$namespace\"}) by (pod)",
+          "legendFormat": "Active Requests — {{ pod }}",
+          "refId":        "B"
+        }
+      ],
+      "title": "Active Handles & Requests",
+      "type":  "timeseries"
+    }
+
+  ],
+
+  "refresh":        "30s",
+  "schemaVersion":  38,
+  "tags":           ["p9", "nodejs", "devops"],
+  "templating": {
+    "list": [
+      {
+        "current":  {},
+        "hide":     0,
+        "includeAll": false,
+        "name":     "datasource",
+        "options":  [],
+        "query":    "prometheus",
+        "refresh":  1,
+        "type":     "datasource",
+        "label":    "Datasource"
+      },
+      {
+        "current":     {},
+        "datasource":  { "type": "prometheus", "uid": "${datasource}" },
+        "definition":  "label_values(kube_pod_info, namespace)",
+        "hide":        0,
+        "includeAll":  false,
+        "multi":       false,
+        "name":        "namespace",
+        "options":     [],
+        "query":       { "query": "label_values(kube_pod_info, namespace)", "refId": "A" },
+        "refresh":     2,
+        "sort":        1,
+        "type":        "query",
+        "label":       "Namespace"
+      }
+    ]
+  },
+  "time":           { "from": "now-1h", "to": "now" },
+  "timepicker":     {},
+  "timezone":       "browser",
+  "title":          "P9 — Node.js App Dashboard",
+  "uid":            "p9-nodejs-app-v1",
+  "version":        1,
+  "weekStart":      ""
+}

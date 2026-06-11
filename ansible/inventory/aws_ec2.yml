@@ -1,0 +1,22 @@
+# Automatically discovers EC2 instances tagged with the project
+plugin: amazon.aws.aws_ec2
+
+regions:
+  - us-east-1
+
+filters:
+  tag:Project: p9-devops
+  tag:Role:    worker
+  instance-state-name: running
+
+keyed_groups:
+  - key:   tags.Environment
+    prefix: env
+  - key:   tags.Role
+    prefix: role
+
+hostnames:
+  - private-ip-address   # Use private IP (Jenkins in same VPC)
+
+compose:
+  ansible_host: private_ip_address

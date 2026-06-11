@@ -1,0 +1,71 @@
+# kube-prometheus-stack Helm values
+# Install: helm install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+#            -f monitoring/prometheus/values.yaml -n monitoring --create-namespace
+
+grafana:
+  enabled:      true
+  adminPassword: "P9DevOps2024!"     # Use a secret in production
+  ingress:
+    enabled:     true
+    ingressClassName: nginx
+    hosts:
+      - grafana.p9.internal
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+        - name:            default
+          orgId:           1
+          folder:          P9 DevOps
+          type:            file
+          disableDeletion: false
+          options:
+            path: /var/lib/grafana/dashboards/default
+  dashboardsConfigMaps:
+    default: grafana-dashboards
+
+prometheus:
+  prometheusSpec:
+    retention:           15d
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: gp2
+          resources:
+            requests:
+              storage: 20Gi
+    # Scrape ServiceMonitors from all namespaces
+    serviceMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorSelector: {}
+    serviceMonitorNamespaceSelector: {}
+    additionalScrapeConfigs:
+      - job_name: "p9-nodejs-ec2"
+        static_configs:
+          - targets:
+              - "10.0.3.10:80"    # EC2 worker IPs (update per Terraform output)
+        metrics_path: /metrics
+        scrape_interval: 30s
+
+alertmanager:
+  enabled: true
+  config:
+    global:
+      slack_api_url: ""   # Set your Slack webhook
+    route:
+      group_by:        [alertname, namespace]
+      group_wait:      30s
+      group_interval:  5m
+      repeat_interval: 12h
+      receiver:        slack
+    receivers:
+      - name: slack
+        slack_configs:
+          - channel:      "#devops-alerts"
+            title:        "P9 Alert: {{ .CommonAnnotations.summary }}"
+            text:         "{{ range .Alerts }}{{ .Annotations.description }}{{ end }}"
+
+nodeExporter:
+  enabled: true
+
+kubeStateMetrics:
+  enabled: true

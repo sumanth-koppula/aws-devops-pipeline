@@ -1,0 +1,54 @@
+---
+- name: Update all packages
+  ansible.builtin.yum:
+    name:  "*"
+    state: latest
+  tags: [common, packages]
+
+- name: Install essential packages
+  ansible.builtin.yum:
+    name:
+      - git
+      - curl
+      - wget
+      - unzip
+      - jq
+      - htop
+      - python3
+      - python3-pip
+    state: present
+  tags: [common, packages]
+
+- name: Install AWS CLI v2
+  ansible.builtin.shell: |
+    curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+    unzip -q /tmp/awscliv2.zip -d /tmp
+    /tmp/aws/install --update
+    rm -rf /tmp/aws /tmp/awscliv2.zip
+  args:
+    creates: /usr/local/bin/aws
+  tags: [common, awscli]
+
+- name: Configure timezone to UTC
+  community.general.timezone:
+    name: UTC
+  tags: [common]
+
+- name: Set system limits for containers
+  ansible.posix.sysctl:
+    name:  "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_set: true
+    reload: true
+  loop:
+    - { key: vm.max_map_count,     value: 262144 }
+    - { key: net.core.somaxconn,   value: 65535 }
+  tags: [common, sysctl]
+
+- name: Create app user
+  ansible.builtin.user:
+    name:   appuser
+    groups: docker
+    shell:  /bin/bash
+    system: false
+  tags: [common]

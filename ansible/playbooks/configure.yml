@@ -1,0 +1,26 @@
+---
+# Triggered by Jenkins Stage 4: configure EC2 workers
+# ansible-playbook playbooks/configure.yml --extra-vars "target_hosts=role_worker"
+
+- name: "Configure EC2 Workers"
+  hosts: "{{ target_hosts | default('role_worker') }}"
+  gather_facts: true
+
+  pre_tasks:
+    - name: Wait for SSH
+      ansible.builtin.wait_for_connection:
+        timeout: 120
+
+    - name: Print host info
+      ansible.builtin.debug:
+        msg: "Configuring {{ inventory_hostname }} ({{ ansible_host }})"
+
+  roles:
+    - common
+    - docker
+
+  post_tasks:
+    - name: Verify Docker is running
+      ansible.builtin.service:
+        name: docker
+        state: started

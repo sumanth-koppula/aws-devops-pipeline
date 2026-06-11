@@ -1,0 +1,47 @@
+# ============================================================
+# terraform/terraform.tfvars.example
+# Copy this file: cp terraform.tfvars.example terraform.tfvars
+# Then fill in all values before running terraform apply
+# ============================================================
+
+# ── AWS Settings ─────────────────────────────────────────────────────
+aws_region   = "us-east-1"      # AWS region to deploy everything into
+project_name = "p9-devops"      # Prefix for all resource names
+environment  = "dev"            # dev | staging | prod
+
+# ── Networking ───────────────────────────────────────────────────────
+vpc_cidr             = "10.0.0.0/16"
+availability_zones   = ["us-east-1a", "us-east-1b"]
+public_subnet_cidrs  = ["10.0.1.0/24", "10.0.2.0/24"]
+private_subnet_cidrs = ["10.0.3.0/24", "10.0.4.0/24"]
+
+# ── EC2 / Jenkins ────────────────────────────────────────────────────
+# Instance type for the Jenkins server
+jenkins_instance_type = "t3.medium"
+
+# Name of the EC2 key pair (must already exist in AWS)
+# Create with: aws ec2 create-key-pair --key-name p9-key \
+#               --query 'KeyMaterial' --output text > ~/.ssh/p9-key.pem
+key_name = "p9-key"
+
+# ── EKS Cluster ──────────────────────────────────────────────────────
+eks_cluster_version = "1.28"         # Kubernetes version
+node_instance_types = ["t3.large"]   # EC2 type for K8s worker nodes
+
+# Auto Scaling Group settings for EKS node group
+desired_capacity = 2   # Start with 2 nodes
+min_size         = 1   # Scale down to 1 at minimum
+max_size         = 4   # Scale up to 4 at maximum
+
+# ── RDS PostgreSQL ───────────────────────────────────────────────────
+rds_instance_class = "db.t3.micro"
+db_name            = "p9db"
+db_username        = "admin"
+
+# IMPORTANT: Use a strong password in production.
+# Never commit the real terraform.tfvars to Git!
+db_password = "ChangeMe123!"
+
+# ── Tags (applied to all resources via provider default_tags) ────────
+# These are set via project_name + environment above.
+# If you need extra tags, add them here and wire into main.tf
